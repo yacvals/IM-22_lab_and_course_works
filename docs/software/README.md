@@ -282,6 +282,83 @@ dependency = Annotated[Session, Depends(get_db)]
 ```
 
 ### Моделі
+#### Access
+```python
+from src.python.Environment.database import Base
+from sqlalchemy import Column, Integer, String, DateTime
+
+
+class Access(Base):
+    __tablename__ = 'access'
+    role_id = Column(Integer, nullable=False)
+    file_id = Column(Integer, nullable=False)
+
+```
+#### Filter
+```
+from src.python.Environment.database import Base
+from sqlalchemy import Column, Integer, String
+
+
+class Filter(Base):
+    __tablename__ = 'filter'
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    keyword = Column(String(255))
+    country = Column(String(45))
+    format = Column(String(45))
+    request_id = Column(Integer)
+```
+#### Grant
+```python
+from src.python.Environment.database import Base
+from sqlalchemy import Column, Integer
+from pydantic import BaseModel
+from typing import List
+from Permission import PermissionCreate
+
+class Grant(Base):
+    __tablename__ = 'grant'
+    right_id = Column(Integer, nullable=False)
+    role_id = Column(Integer, nullable=False)
+    name: str
+    permissions: List[PermissionCreate] = []
+```
+#### Permission
+```python
+from src.python.Environment.database import Base
+from sqlalchemy import Column, Integer, String
+from pydantic import BaseModel
+
+
+class PermissionBase(Base):
+    __tablename__ = 'permission'
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255))
+    right_id = Column(Integer, nullable=False)
+
+class PermissionCreate(BaseModel):
+        pass
+```
+#### Right
+```python
+from src.python.Environment.database import Base
+from sqlalchemy import Column, Integer, String, DateTime
+from typing import List
+from Permission import PermissionCreate
+from pydantic import BaseModel
+
+
+class Right(Base):
+    __tablename__ = 'right'
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255))
+
+
+class RightBase(BaseModel):
+      permissions: List[PermissionCreate] = []
+```
 
 #### File
 ```python
@@ -434,7 +511,97 @@ class UserWithID(UserBase):
 ```
 
 ### Контролери
+#### access_routes
+```python
+from src.python.Models import Access
+from fastapi import HTTPException, status
+from src.python.Environment.dependencies import dependency
+from fastapi import APIRouter
+from typing import List
 
+router = APIRouter()
+
+
+@router.get("", status_code=status.HTTP_200_OK, response_model=Access.Base)
+async def read_all_files(db: dependency):
+    access = db.query(Access.Access).all()
+    if not access:
+        raise HTTPException(status_code=404, detail="No access found")
+    return access
+```
+
+#### grant_routes
+```
+from src.python.Models import  Grant
+from fastapi import HTTPException, status
+from src.python.Environment.dependencies import dependency
+from fastapi import APIRouter
+from typing import List
+
+router = APIRouter()
+
+@router.post("/grants/", status_code=status.HTTP_201_CREATED, response_model=Grant.Grant)
+async def create_grant(grant: Grant.Grant, db: dependency):
+    db_grant = Grant.Grant(**grant.dict())
+    db.add(db_grant)
+    db.commit()
+    db.refresh(db_grant)
+    return db_grant
+```
+
+#### permission_routes
+```
+from src.python.Models import Permission
+from fastapi import HTTPException, status
+from src.python.Environment.dependencies import dependency
+from fastapi import APIRouter
+from typing import List
+
+router = APIRouter()
+
+@router.post("/permissions/",status_code=status.HTTP_201_CREATED, response_model=Permission.BaseModel)
+async def create_permission(permission: Permission.PermissionCreate,db: dependency):
+    db_permission = Permission.PermissionBase(**permission.dict())
+
+    db.add(db_permission)
+    db.commit()
+    db.refresh(db_permission)
+    return db_permission
+
+
+@router.get("/permissions/{permission_id}", response_model=Permission.Permission)
+async def read_permission(permission_id: int,db: dependency):
+    return Permission
+```
+#### right_routes
+```python
+from src.python.Models import Right
+from fastapi import HTTPException, status
+from src.python.Environment.dependencies import dependency
+from fastapi import APIRouter
+from typing import List
+
+router = APIRouter()
+
+
+@router.post("/rights/", status_code=status.HTTP_201_CREATED, response_model=Right.RightBase)
+async def create_right(right: Right.RightBase, db: dependency):
+    db_right = Right.Right(**right.dict())
+    db.add(db_right)
+    db.commit()
+    db.refresh(db_right)
+    return db_right
+
+
+@router.get("", status_code=status.HTTP_200_OK,response_model=Right.RightBase)
+async def get_right(db: dependency, right_id: int):
+   right = db.query(Right.Right).filter(Right.Right.id == right_id).first()
+
+   if right is None:
+       raise HTTPException(status_code=404, detail="Right not found")
+   return right
+```
+    
 #### file_routes
 ```python
 from Models import File
@@ -778,11 +945,15 @@ async def delete_user(user_id: int, db: dependency):
 #### main
 ```python
 from fastapi import FastAPI
-from Routes.user_routes import router as user_router
-from Routes.role_routes import router as role_router
-from Routes.search_routes import router as search_router
-from Routes.request_routes import router as request_router
-from Routes.file_routes import router as file_router
+from src.python.Routes.user_routes import router as user_router
+from src.python.Routes.role_routes import router as role_router
+from src.python.Routes.search_routes import router as search_router
+from src.python.Routes.request_routes import router as request_router
+from src.python.Routes.file_routes import router as file_router
+from src.python.Routes.access_routes import router as access_router
+from src.python.Routes.grant_routes import router as grant_router
+from src.python.Routes.permission_routes import router as permission_router
+from src.python.Routes.right_routes import router as right_router
 
 app = FastAPI(title="6_Lab_API", description='Bla description')
 
@@ -791,4 +962,9 @@ app.include_router(role_router, tags=["roles"], prefix="/roles")
 app.include_router(request_router, tags=["requests"], prefix="/requests")
 app.include_router(file_router, tags=["files"], prefix="/files")
 app.include_router(search_router, tags=["search"], prefix="/search")
+
+app.include_router(access_router, tags=["access"], prefix="/access")
+app.include_router(grant_router, tags=["grant"], prefix="/grant")
+app.include_router(permission_router, tags=["permission"], prefix="/permission")
+app.include_router(right_router, tags=["right"], prefix="/right")
 ```

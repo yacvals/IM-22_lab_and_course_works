@@ -21,8 +21,3 @@ app.include_router(access_router, tags=["access"], prefix="/access")
 app.include_router(grant_router, tags=["grant"], prefix="/grant")
 app.include_router(permission_router, tags=["permission"], prefix="/permission")
 app.include_router(right_router, tags=["right"], prefix="/right")
-
-
-
-
-
